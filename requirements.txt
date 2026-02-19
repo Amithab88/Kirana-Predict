@@ -1,5 +1,5 @@
 pandas
-streamlit
+streamlit==1.37.0
 plotly
-altair
+altair==5.3.0
 numpy
