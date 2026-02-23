@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from helpers import load_data
+from database_manager import load_data_from_db
 from ml_engine import predict_future_demand
 
 # Page Config
 st.set_page_config(page_title="Kirana-Predict Pro", layout="wide", page_icon="📦")
 
 # Data Loading
-df = load_data()
+df = load_data_from_db()
 df['transaction_date'] = pd.to_datetime(df['transaction_date'])
 
 # 1. Initialize session state for navigation
@@ -35,7 +35,7 @@ if st.session_state.page == 'Home':
     # Summary Metrics
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Products", df['product_name'].nunique())
-    c2.metric("Total Sales Volume", f"{df['Quantity'].sum():,}")
+    c2.metric("Total Sales Volume", f"{df['quantity'].sum():,}")
     c3.metric("Last Update", df['transaction_date'].max().strftime('%d %b %Y'))
     
     st.markdown("---")
@@ -76,7 +76,7 @@ elif st.session_state.page == 'Sales Analysis':
         start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
         filtered_df = df[(df['transaction_date'] >= start_date) & (df['transaction_date'] <= end_date)]
         
-        top_items = filtered_df.groupby('product_name')['Quantity'].sum().sort_values(ascending=False).head(5)
+        top_items = filtered_df.groupby('product_name')['quantity'].sum().sort_values(ascending=False).head(5)
         
         if not top_items.empty:
             fig = px.bar(top_items, x=top_items.index, y=top_items.values,
@@ -104,7 +104,7 @@ elif st.session_state.page == 'Inventory Forecast':
         recent_data = item_data[item_data['transaction_date'] >= cutoff]
         
         if not recent_data.empty:
-            avg_sales = recent_data['Quantity'].sum() / recent_data['transaction_date'].nunique()
+            avg_sales = recent_data['quantity'].sum() / recent_data['transaction_date'].nunique()
             days_left = stock / avg_sales if avg_sales > 0 else 0
             
             m1, m2, m3 = st.columns(3)
@@ -120,10 +120,10 @@ elif st.session_state.page == 'Inventory Forecast':
                 st.success("✅ Stock levels healthy.")
             
             st.subheader("📈 Sales Trend")
-            daily_sales = recent_data.groupby('transaction_date')['Quantity'].sum().reset_index()
-            fig = px.line(daily_sales, x='transaction_date', y='Quantity',
+            daily_sales = recent_data.groupby('transaction_date')['quantity'].sum().reset_index()
+            fig = px.line(daily_sales, x='transaction_date', y='quantity',
                          title=f"{item} - Last {days_to_consider} Days",
-                         labels={'Quantity': 'Units Sold', 'transaction_date': 'Date'})
+                         labels={'quantity': 'Units Sold', 'transaction_date': 'Date'})
             st.plotly_chart(fig, use_container_width=True)
             
             # AI PREDICTION SECTION

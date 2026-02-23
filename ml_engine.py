@@ -15,7 +15,7 @@ def predict_future_demand(item_df, days_to_predict=7):
         return None, None
     
     # 1. Prepare Data: Group by date
-    daily_sales = item_df.groupby('transaction_date')['Quantity'].sum().reset_index()
+    daily_sales = item_df.groupby('transaction_date')['quantity'].sum().reset_index()
     
     if len(daily_sales) < 2:
         return None, None
@@ -24,7 +24,7 @@ def predict_future_demand(item_df, days_to_predict=7):
     daily_sales['date_ordinal'] = daily_sales['transaction_date'].map(pd.Timestamp.toordinal)
     
     X = daily_sales[['date_ordinal']].values  # Feature: Date
-    y = daily_sales['Quantity'].values        # Target: Units Sold
+    y = daily_sales['quantity'].values        # Target: Units Sold
     
     # 3. Train the Model
     model = LinearRegression()
