@@ -8,8 +8,31 @@ from ml_engine import predict_future_demand
 st.set_page_config(page_title="Kirana-Predict Pro", layout="wide", page_icon="📦")
 
 # Data Loading
-df = load_data_from_db()
-df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+try:
+    df = load_data_from_db()
+    if df.empty:
+        st.error("❌ No data in database. Please add sales data in Supabase.")
+        st.stop()
+except Exception as e:
+    st.error(f"❌ Database connection failed: {str(e)}")
+    st.info("💡 Check your .env file and Supabase credentials")
+    st.stop()
+
+try:
+    # Prefer an explicit transaction date column if present
+    if 'transaction_date' in df.columns:
+        df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+    # Fallback: some pipelines may only store created_at
+    elif 'created_at' in df.columns:
+        df['transaction_date'] = pd.to_datetime(df['created_at'])
+    else:
+        raise KeyError(
+            f"No date column found. Expected 'transaction_date' or 'created_at'. "
+            f"Available columns: {list(df.columns)}"
+        )
+except Exception as e:
+    st.error(f"❌ Date conversion error: {str(e)}")
+    st.stop()
 
 # 1. Initialize session state for navigation
 if 'page' not in st.session_state:
@@ -73,6 +96,9 @@ elif st.session_state.page == 'Sales Analysis':
                                  df['transaction_date'].max().date()])
     
     if len(date_range) == 2:
+        if date_range[0] > date_range[1]:
+            st.error("❌ Start date must be before end date")
+            st.stop()
         start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
         filtered_df = df[(df['transaction_date'] >= start_date) & (df['transaction_date'] <= end_date)]
         
@@ -92,73 +118,197 @@ elif st.session_state.page == 'Sales Analysis':
 elif st.session_state.page == 'Inventory Forecast':
     st.title("🔮 Smart Inventory Forecaster")
     
+    # ✅ STEP 1: Product selection (must come first)
     item = st.selectbox("Select Product:", df['product_name'].unique())
-    stock = st.number_input("Current Physical Stock:", min_value=0, value=50)
-    days_to_consider = st.slider("Lookback Period (Days):", 7, 90, 30)
     
-    item_data = df[df['product_name'] == item]
+    # ✅ STEP 2: Filter data for selected product IMMEDIATELY
+    item_data = df[df['product_name'] == item].copy()
     
-    if not item_data.empty:
-        max_date = item_data['transaction_date'].max()
-        cutoff = max_date - pd.Timedelta(days=days_to_consider)
-        recent_data = item_data[item_data['transaction_date'] >= cutoff]
-        
-        if not recent_data.empty:
-            avg_sales = recent_data['quantity'].sum() / recent_data['transaction_date'].nunique()
-            days_left = stock / avg_sales if avg_sales > 0 else 0
-            
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Current Stock", stock)
-            m2.metric("Avg Daily Sales", f"{round(avg_sales, 1)}")
-            m3.metric("Est. Days Left", f"{round(days_left, 1)}")
-            
-            if days_left < 3: 
-                st.error(f"🚨 ORDER NOW: Running out in {round(days_left, 1)} days!")
-            elif days_left < 7: 
-                st.warning(f"⚠️ Low Stock: Restock within a week.")
-            else: 
-                st.success("✅ Stock levels healthy.")
-            
-            st.subheader("📈 Sales Trend")
-            daily_sales = recent_data.groupby('transaction_date')['quantity'].sum().reset_index()
-            fig = px.line(daily_sales, x='transaction_date', y='quantity',
-                         title=f"{item} - Last {days_to_consider} Days",
-                         labels={'quantity': 'Units Sold', 'transaction_date': 'Date'})
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # AI PREDICTION SECTION
-            st.markdown("---")
-            st.subheader("🚀 AI-Powered 7-Day Forecast")
-
-            if st.button("🔮 Generate Future Forecast", type="primary"):
-                if len(item_data) < 7:
-                    st.warning("⚠️ Need at least 7 days of sales history.")
-                else:
-                    forecast, accuracy = predict_future_demand(item_data)
+    # ✅ STEP 3: Check if product has any data
+    if item_data.empty:
+        st.error(f"❌ No sales data found for '{item}'")
+        st.stop()  # Stop execution here
+    
+    # ✅ STEP 4: User inputs (now safe because item_data exists)
+    col_input1, col_input2 = st.columns(2)
+    
+    with col_input1:
+        stock = st.number_input("Current Physical Stock:", min_value=0, value=50)
+    
+    with col_input2:
+        days_to_consider = st.slider("Lookback Period (Days):", 7, 90, 30)
+    
+    # ✅ STEP 5: Calculate metrics (using already defined item_data)
+    max_date = item_data['transaction_date'].max()
+    cutoff = max_date - pd.Timedelta(days=days_to_consider)
+    recent_data = item_data[item_data['transaction_date'] >= cutoff]
+    
+    # ✅ STEP 6: Check if we have recent data
+    if recent_data.empty:
+        st.warning(f"⚠️ No sales data for {item} in the last {days_to_consider} days.")
+        st.info("💡 Try increasing the lookback period or select a different product.")
+        st.stop()  # Stop execution here
+    
+    # ✅ STEP 7: Calculate daily metrics
+    avg_sales = recent_data['quantity'].sum() / recent_data['transaction_date'].nunique()
+    days_left = stock / avg_sales if avg_sales > 0 else 0
+    
+    # ✅ STEP 8: Display metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("📦 Current Stock", stock)
+    m2.metric("📈 Avg Daily Sales", f"{round(avg_sales, 1)} units")
+    m3.metric("⏰ Days Left", f"{round(days_left, 1)} days")
+    
+    # ✅ STEP 9: Stock alerts
+    if days_left < 3:
+        st.error(f"🚨 CRITICAL: Only {round(days_left, 1)} days of stock remaining!")
+    elif days_left < 7:
+        st.warning(f"⚠️ Low Stock: Restock within a week ({round(days_left, 1)} days left)")
+    else:
+        st.success(f"✅ Stock levels healthy ({round(days_left, 1)} days remaining)")
+    
+    # ✅ STEP 10: Sales trend chart
+    st.markdown("---")
+    st.subheader("📊 Historical Sales Trend")
+    
+    daily_sales = recent_data.groupby('transaction_date')['quantity'].sum().reset_index()
+    
+    if not daily_sales.empty:
+        fig_trend = px.line(
+            daily_sales,
+            x='transaction_date',
+            y='quantity',
+            title=f"{item} - Sales Trend (Last {days_to_consider} Days)",
+            labels={'quantity': 'Units Sold', 'transaction_date': 'Date'}
+        )
+        fig_trend.update_traces(line_color='#1f77b4', line_width=2)
+        fig_trend.update_layout(hovermode='x unified')
+        st.plotly_chart(fig_trend, use_container_width=True)
+    
+    # ✅ STEP 11: AI Prediction Section
+    st.markdown("---")
+    st.subheader("🚀 AI-Powered 7-Day Forecast")
+    
+    # Show data availability info
+    unique_days = item_data['transaction_date'].nunique()
+    total_records = len(item_data)
+    
+    col_info1, col_info2 = st.columns(2)
+    col_info1.info(f"📅 Available Data: **{unique_days} unique days**")
+    col_info2.info(f"📊 Total Transactions: **{total_records} records**")
+    
+    # ✅ STEP 12: AI Prediction Button (with proper validation)
+    if st.button("🔮 Generate Future Forecast", type="primary"):
+        # Validate data availability
+        if unique_days < 7:
+            st.error(f"❌ Insufficient Data: Need at least 7 days of sales history.")
+            st.warning(f"Currently have: **{unique_days} days**")
+            st.info("💡 **Solutions:**\n- Add more historical data in Supabase\n- Select a different product with more history")
+        else:
+            # Show loading spinner
+            with st.spinner('🤖 AI is analyzing sales patterns...'):
+                try:
+                    # Call prediction function
+                    forecast, metrics_dict = predict_future_demand(item_data)
+                    # Extract the accuracy number from the dictionary, or default to 0
+                    accuracy = metrics_dict.get('accuracy', 0) / 100 if metrics_dict else 0
                     
                     if forecast is None:
-                        st.error("❌ Insufficient data for prediction.")
+                        st.error("❌ Prediction failed. Please try a different product or date range.")
                     else:
+                        # Display results
                         col1, col2 = st.columns([1, 2])
                         
                         with col1:
-                            st.write("**📅 Next Week's Prediction:**")
-                            st.dataframe(forecast.set_index('Date'), use_container_width=True)
+                            st.markdown("**📅 Next Week's Prediction:**")
                             
-                            confidence_color = "green" if accuracy > 0.7 else "orange" if accuracy > 0.4 else "red"
-                            st.markdown(f"**Model Accuracy:** :{confidence_color}[{round(accuracy * 100, 1)}%]")
+                            # Format the forecast table
+                            display_forecast = forecast[['Date', 'Predicted_Sales']].copy()
+                            display_forecast['Date'] = pd.to_datetime(display_forecast['Date']).dt.strftime('%d %b %Y')
+                            
+                            st.dataframe(
+                                display_forecast.set_index('Date'),
+                                use_container_width=True,
+                                height=280
+                            )
+                            
+                            # Show accuracy with color coding
+                            if accuracy > 0.7:
+                                st.success(f"**Model Accuracy:** {round(accuracy * 100, 1)}%")
+                            elif accuracy > 0.4:
+                                st.warning(f"**Model Accuracy:** {round(accuracy * 100, 1)}%")
+                            else:
+                                st.error(f"**Model Accuracy:** {round(accuracy * 100, 1)}%")
+                            
+                            st.caption("⚠️ Low accuracy indicates unpredictable sales patterns")
                         
                         with col2:
-                            fig_forecast = px.line(forecast, x='Date', y='Predicted_Sales', 
-                                                   title=f"AI Forecast: {item}",
-                                                   markers=True)
-                            fig_forecast.update_traces(line_color='orange', line_width=3)
-                            st.plotly_chart(fig_forecast, use_container_width=True)
+                            st.markdown("**📈 Forecast Visualization:**")
                             
+                            # Create forecast chart
+                            fig_forecast = px.line(
+                                forecast,
+                                x='Date',
+                                y='Predicted_Sales',
+                                title=f"AI Forecast: {item}",
+                                markers=True
+                            )
+                            fig_forecast.update_traces(
+                                line_color='orange',
+                                line_width=3,
+                                marker=dict(size=8)
+                            )
+                            fig_forecast.update_layout(
+                                xaxis_title="Date",
+                                yaxis_title="Predicted Sales (Units)",
+                                hovermode='x unified'
+                            )
+                            st.plotly_chart(fig_forecast, use_container_width=True)
+                        
+                        # Calculate total needed
                         total_needed = forecast['Predicted_Sales'].sum()
-                        st.info(f"💡 **AI Insight:** Estimated **{round(total_needed)}** units needed for next 7 days.")
-        
-        else:
-            st.error(f"❌ No sales data for {item} in the last {days_to_consider} days.")
-    else:
-        st.error(f"❌ Product '{item}' not found in database.")
+                        avg_daily_forecast = forecast['Predicted_Sales'].mean()
+                        
+                        # Business insights
+                        st.markdown("---")
+                        st.markdown("### 💡 Business Insights")
+                        
+                        insight_col1, insight_col2, insight_col3 = st.columns(3)
+                        
+                        insight_col1.metric(
+                            "📦 Total Needed (7 days)",
+                            f"{round(total_needed)} units"
+                        )
+                        
+                        insight_col2.metric(
+                            "📊 Avg Daily Forecast",
+                            f"{round(avg_daily_forecast, 1)} units/day"
+                        )
+                        
+                        # Compare forecast vs current burn rate
+                        forecast_days_left = stock / avg_daily_forecast if avg_daily_forecast > 0 else 0
+                        insight_col3.metric(
+                            "⏰ Forecast Days Left",
+                            f"{round(forecast_days_left, 1)} days"
+                        )
+                        
+                        # Recommendation
+                        if forecast_days_left < 7:
+                            st.error(f"🚨 **Action Required:** Stock will run out before end of forecast period!")
+                            st.info(f"💡 **Recommendation:** Order at least {round(total_needed - stock)} more units")
+                        elif forecast_days_left < 14:
+                            st.warning(f"⚠️ **Caution:** Stock adequate for forecast period, but monitor closely")
+                            st.info(f"💡 **Recommendation:** Consider ordering {round(total_needed * 0.5)} units for buffer")
+                        else:
+                            st.success(f"✅ **All Good:** Current stock sufficient for forecast period")
+                
+                except Exception as e:
+                    st.error(f"❌ Prediction Error: {str(e)}")
+                    st.info("💡 Try selecting a different product or adjusting the lookback period")
+                    
+                    # Show debug info in expander
+                    with st.expander("🔍 Debug Information"):
+                        st.write("**Error Details:**")
+                        st.code(str(e))
+                        st.write("**Item Data Shape:**", item_data.shape)
+                        st.write("**Date Range:**", item_data['transaction_date'].min(), "to", item_data['transaction_date'].max())

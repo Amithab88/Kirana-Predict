@@ -1,0 +1,11 @@
+transaction_date,product_name,quantity,unit_price,total_amount,store_name,customer_id
+2024-02-25,Rice 1kg,3,45.00,135.00,Main Store,CUST101
+2024-02-25,Milk 1L,2,55.00,110.00,Main Store,CUST102
+2024-02-25,Bread,4,25.00,100.00,Main Store,CUST103
+2024-02-25,Sugar 1kg,2,42.00,84.00,Main Store,CUST104
+2024-02-26,Tea 250g,1,150.00,150.00,Main Store,CUST105
+2024-02-26,Biscuits,5,30.00,150.00,Main Store,CUST106
+2024-02-26,Eggs 12pc,3,75.00,225.00,Main Store,CUST107
+2024-02-26,Wheat Flour 1kg,4,35.00,140.00,Main Store,CUST108
+2024-02-27,Rice 1kg,2,45.00,90.00,Main Store,CUST109
+2024-02-27,Milk 1L,1,55.00,55.00,Main Store,CUST110

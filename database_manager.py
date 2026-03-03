@@ -1,4 +1,4 @@
-# database_manager.py - Complete database operations for Kirana-Predict
+# database_manager.py - Fixed version for Streamlit Cloud
 
 import pandas as pd
 from datetime import datetime, timedelta
@@ -14,10 +14,6 @@ class KiranaDatabase:
     def __init__(self):
         """Initialize database connection"""
         self.supabase = get_supabase_client()
-    
-    # ========================================
-    # SALES OPERATIONS
-    # ========================================
     
     def add_sale(self, sale_data: Dict[str, Any], source: str = 'manual') -> Dict:
         """Add a single sale transaction"""
@@ -36,16 +32,35 @@ class KiranaDatabase:
             raise
     
     def get_all_sales(self) -> pd.DataFrame:
-        """Get all sales data"""
+        """Get all sales data - FIXED for Streamlit Cloud"""
         try:
             response = self.supabase.table('sales').select("*").execute()
+            
+            if not response.data:
+                print("⚠️  No data returned from Supabase")
+                return pd.DataFrame()
+            
             df = pd.DataFrame(response.data)
             
-            if not df.empty:
-                df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+            if df.empty:
+                print("⚠️  DataFrame is empty")
+                return df
+            
+            # FIX: Handle date conversion with flexible format
+            if 'transaction_date' in df.columns:
+                try:
+                    # Use format='ISO8601' to handle various ISO formats
+                    df['transaction_date'] = pd.to_datetime(df['transaction_date'], format='ISO8601')
+                except Exception as e:
+                    print(f"⚠️  ISO8601 failed, trying mixed format: {e}")
+                    # Fallback to mixed format
+                    df['transaction_date'] = pd.to_datetime(df['transaction_date'], format='mixed')
+            else:
+                print(f"⚠️  'transaction_date' column not found. Available columns: {df.columns.tolist()}")
             
             print(f"📊 Loaded {len(df)} sales records")
             return df
+            
         except Exception as e:
             print(f"❌ Error loading sales: {e}")
             return pd.DataFrame()
@@ -62,8 +77,8 @@ class KiranaDatabase:
                 .execute()
             
             df = pd.DataFrame(response.data)
-            if not df.empty:
-                df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+            if not df.empty and 'transaction_date' in df.columns:
+                df['transaction_date'] = pd.to_datetime(df['transaction_date'], format='ISO8601')
             
             return df
         except Exception as e:
@@ -85,10 +100,7 @@ class KiranaDatabase:
 # ========================================
 
 def load_data() -> pd.DataFrame:
-    """
-    Backward compatible function
-    Replaces old CSV-based load_data()
-    """
+    """Backward compatible function"""
     db = KiranaDatabase()
     return db.get_all_sales()
 
@@ -108,12 +120,16 @@ if __name__ == "__main__":
     try:
         db = KiranaDatabase()
         
-        # Test: Load sales
         print("=" * 60)
         print("TEST: Loading Sales")
         print("=" * 60)
         sales = db.get_all_sales()
         print(f"✅ Loaded {len(sales)} sales\n")
+        
+        if not sales.empty:
+            print("Columns:", sales.columns.tolist())
+            print("\nFirst row:")
+            print(sales.head(1))
         
         print("🎉 Test Passed!")
         
