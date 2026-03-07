@@ -55,6 +55,16 @@ except Exception as e:
     st.error(f"❌ Date conversion error: {str(e)}")
     st.stop()
 
+# Normalize optional columns used in filters/metrics
+if 'store_name' not in df.columns:
+    df['store_name'] = 'Main Store'
+
+if 'data_source' not in df.columns:
+    df['data_source'] = 'manual'
+
+if 'total_amount' not in df.columns and 'quantity' in df.columns and 'unit_price' in df.columns:
+    df['total_amount'] = df['quantity'] * df['unit_price']
+
 # 1. Initialize session state for navigation
 if 'page' not in st.session_state:
     st.session_state.page = 'Home'
@@ -106,6 +116,49 @@ if st.session_state.page == 'Home':
             use_container_width=True
         )
     
+    # Search & Filter Section
+    st.markdown("---")
+    st.subheader("🔍 Search & Filter Data")
+    
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    
+    with filter_col1:
+        search_query = st.text_input(
+            "🔎 Search Product",
+            placeholder="Type product name...",
+            help="Search by product name"
+        )
+    
+    with filter_col2:
+        if 'store_name' in df.columns:
+            all_stores = ['All Stores'] + sorted(df['store_name'].dropna().unique().tolist())
+        else:
+            all_stores = ['All Stores']
+        selected_store = st.selectbox("🏪 Filter by Store", all_stores)
+    
+    with filter_col3:
+        if 'data_source' in df.columns:
+            all_sources = ['All Sources'] + sorted(df['data_source'].dropna().unique().tolist())
+        else:
+            all_sources = ['All Sources']
+        selected_source = st.selectbox("📊 Filter by Data Source", all_sources)
+    
+    filtered_home_df = df.copy()
+    
+    if search_query:
+        filtered_home_df = filtered_home_df[
+            filtered_home_df['product_name'].str.contains(search_query, case=False, na=False)
+        ]
+    
+    if selected_store != 'All Stores':
+        filtered_home_df = filtered_home_df[filtered_home_df['store_name'] == selected_store]
+    
+    if selected_source != 'All Sources':
+        filtered_home_df = filtered_home_df[filtered_home_df['data_source'] == selected_source]
+    
+    if search_query or selected_store != 'All Stores' or selected_source != 'All Sources':
+        st.info(f"🔍 Showing **{len(filtered_home_df)}** records (filtered from {len(df)} total)")
+    
     st.markdown("---")
     st.markdown("### 🚀 Select a Module:")
     
@@ -125,10 +178,17 @@ if st.session_state.page == 'Home':
             ch_page('Inventory Forecast')
             st.rerun()
     
-    # Optional: Recent Activity Preview
+    # Recent Activity Preview (filtered)
     st.markdown("---")
     st.subheader("📋 Recent Sales Activity")
-    st.dataframe(df.head(5), use_container_width=True)
+    
+    if not filtered_home_df.empty:
+        display_df = filtered_home_df.head(10)
+        st.dataframe(display_df, use_container_width=True)
+        if len(filtered_home_df) > 10:
+            st.caption(f"Showing 10 of {len(filtered_home_df)} records")
+    else:
+        st.warning("⚠️ No records match your filters")
 
 # ============================================
 # SALES ANALYSIS PAGE
@@ -136,30 +196,104 @@ if st.session_state.page == 'Home':
 elif st.session_state.page == 'Sales Analysis':
     st.title("📊 Sales Insights")
     
-    date_range = st.date_input("📅 Select Date Range:", 
-                                [df['transaction_date'].min().date(), 
-                                 df['transaction_date'].max().date()])
+    # Filter section
+    st.subheader("🔍 Filter Data")
+    
+    filter_row1_col1, filter_row1_col2 = st.columns(2)
+    
+    with filter_row1_col1:
+        date_range = st.date_input(
+            "📅 Select Date Range:", 
+            [df['transaction_date'].min().date(), 
+             df['transaction_date'].max().date()]
+        )
+    
+    with filter_row1_col2:
+        all_products = df['product_name'].unique().tolist()
+        selected_products = st.multiselect(
+            "🛒 Select Products (leave empty for all)",
+            all_products,
+            help="Select specific products or leave empty to show all"
+        )
+    
+    filter_row2_col1, filter_row2_col2 = st.columns(2)
+    
+    with filter_row2_col1:
+        all_stores_analysis = ['All Stores'] + sorted(df['store_name'].dropna().unique().tolist())
+        selected_store_analysis = st.selectbox(
+            "🏪 Store",
+            all_stores_analysis,
+            key="store_filter_analysis"
+        )
+    
+    with filter_row2_col2:
+        sort_options = {
+            'Date (Newest First)': ('transaction_date', False),
+            'Date (Oldest First)': ('transaction_date', True),
+            'Quantity (Highest First)': ('quantity', False),
+            'Quantity (Lowest First)': ('quantity', True),
+            'Amount (Highest First)': ('total_amount', False),
+            'Amount (Lowest First)': ('total_amount', True),
+        }
+        selected_sort = st.selectbox("📊 Sort By", list(sort_options.keys()))
+    
+    st.markdown("---")
     
     if len(date_range) == 2:
         if date_range[0] > date_range[1]:
             st.error("❌ Start date must be before end date")
             st.stop()
+        
         start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
         filtered_df = df[(df['transaction_date'] >= start_date) & (df['transaction_date'] <= end_date)]
         
+        if selected_products:
+            filtered_df = filtered_df[filtered_df['product_name'].isin(selected_products)]
+        
+        if selected_store_analysis != 'All Stores':
+            filtered_df = filtered_df[filtered_df['store_name'] == selected_store_analysis]
+        
+        sort_column, sort_ascending = sort_options[selected_sort]
+        if sort_column in filtered_df.columns:
+            filtered_df = filtered_df.sort_values(by=sort_column, ascending=sort_ascending)
+        
         if filtered_df.empty:
-            st.warning("⚠️ No sales data in selected date range")
+            st.warning("⚠️ No sales data matches your filters")
             st.stop()
         
-        top_items = filtered_df.groupby('product_name')['quantity'].sum().sort_values(ascending=False).head(5)
+        st.success(
+            f"✅ Found **{len(filtered_df)}** transactions | "
+            f"**{filtered_df['product_name'].nunique()}** unique products | "
+            f"Total: **₹{filtered_df['total_amount'].sum():,.2f}**"
+        )
+        
+        top_items = filtered_df.groupby('product_name')['quantity'].sum().sort_values(ascending=False).head(10)
         
         if not top_items.empty:
-            fig = px.bar(top_items, x=top_items.index, y=top_items.values,
-                         title="Top 5 Best Sellers", color=top_items.values,
-                         color_continuous_scale='Viridis', labels={'y':'Units Sold', 'x':''})
-            st.plotly_chart(fig, use_container_width=True)
+            col_chart, col_data = st.columns([2, 1])
             
-            # Export options for filtered data and summary
+            with col_chart:
+                fig = px.bar(
+                    top_items,
+                    x=top_items.index,
+                    y=top_items.values,
+                    title="Top 10 Best Sellers",
+                    color=top_items.values,
+                    color_continuous_scale='Viridis',
+                    labels={'y': 'Units Sold', 'x': 'Product'}
+                )
+                fig.update_layout(showlegend=False, xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col_data:
+                st.markdown("**📊 Top 10 Products**")
+                top_items_df = pd.DataFrame({
+                    'Product': top_items.index,
+                    'Quantity': top_items.values
+                })
+                st.dataframe(top_items_df, use_container_width=True, height=400)
+            
+            # Export options for filtered data and summary (from Feature 1)
             st.markdown("---")
             st.subheader("📥 Export Data")
             
@@ -203,8 +337,35 @@ elif st.session_state.page == 'Sales Analysis':
 elif st.session_state.page == 'Inventory Forecast':
     st.title("🔮 Smart Inventory Forecaster")
     
-    # ✅ STEP 1: Product selection (must come first)
-    item = st.selectbox("Select Product:", df['product_name'].unique())
+    # Product search and selection
+    st.subheader("🔍 Select Product")
+    
+    search_col, select_col = st.columns([1, 2])
+    
+    with search_col:
+        product_search = st.text_input(
+            "🔎 Search Product",
+            placeholder="Type to filter...",
+            key="product_search_forecast"
+        )
+    
+    all_products_forecast = sorted(df['product_name'].unique().tolist())
+    
+    if product_search:
+        filtered_products = [p for p in all_products_forecast if product_search.lower() in p.lower()]
+        if not filtered_products:
+            st.warning(f"⚠️ No products match '{product_search}'")
+            st.stop()
+    else:
+        filtered_products = all_products_forecast
+    
+    with select_col:
+        st.caption(f"📦 {len(filtered_products)} product(s) available")
+        item = st.selectbox(
+            "Choose Product:",
+            filtered_products,
+            key="product_select_forecast"
+        )
     
     # ✅ STEP 2: Filter data for selected product IMMEDIATELY
     item_data = df[df['product_name'] == item].copy()
