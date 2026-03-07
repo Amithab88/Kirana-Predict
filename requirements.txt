@@ -10,3 +10,4 @@ prophet
 xgboost 
 statsmodels
 cmdstanpy
+openpyxl

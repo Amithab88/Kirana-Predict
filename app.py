@@ -3,6 +3,27 @@ import pandas as pd
 import plotly.express as px
 from database_manager import load_data_from_db
 from ml_engine import predict_future_demand
+from datetime import datetime
+import io
+
+# ============================================
+# EXPORT HELPER FUNCTIONS
+# ============================================
+
+def export_to_csv(dataframe, filename_prefix):
+    """Convert DataFrame to CSV for download"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv = dataframe.to_csv(index=False)
+    return csv, f"{filename_prefix}_{timestamp}.csv"
+
+def export_to_excel(dataframe, filename_prefix):
+    """Convert DataFrame to Excel for download"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        dataframe.to_excel(writer, index=False, sheet_name='Data')
+    output.seek(0)
+    return output.getvalue(), f"{filename_prefix}_{timestamp}.xlsx"
 
 # Page Config
 st.set_page_config(page_title="Kirana-Predict Pro", layout="wide", page_icon="📦")
@@ -61,6 +82,30 @@ if st.session_state.page == 'Home':
     c2.metric("Total Sales Volume", f"{df['quantity'].sum():,}")
     c3.metric("Last Update", df['transaction_date'].max().strftime('%d %b %Y'))
     
+    # Export buttons for full sales data
+    st.markdown("---")
+    col_export1, col_export2, col_export3 = st.columns([1, 1, 2])
+    
+    with col_export1:
+        csv_data, csv_filename = export_to_csv(df, "all_sales_data")
+        st.download_button(
+            label="📥 Download All Sales (CSV)",
+            data=csv_data,
+            file_name=csv_filename,
+            mime="text/csv",
+            use_container_width=True
+        )
+    
+    with col_export2:
+        excel_data, excel_filename = export_to_excel(df, "all_sales_data")
+        st.download_button(
+            label="📊 Download All Sales (Excel)",
+            data=excel_data,
+            file_name=excel_filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    
     st.markdown("---")
     st.markdown("### 🚀 Select a Module:")
     
@@ -102,6 +147,10 @@ elif st.session_state.page == 'Sales Analysis':
         start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
         filtered_df = df[(df['transaction_date'] >= start_date) & (df['transaction_date'] <= end_date)]
         
+        if filtered_df.empty:
+            st.warning("⚠️ No sales data in selected date range")
+            st.stop()
+        
         top_items = filtered_df.groupby('product_name')['quantity'].sum().sort_values(ascending=False).head(5)
         
         if not top_items.empty:
@@ -109,6 +158,42 @@ elif st.session_state.page == 'Sales Analysis':
                          title="Top 5 Best Sellers", color=top_items.values,
                          color_continuous_scale='Viridis', labels={'y':'Units Sold', 'x':''})
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Export options for filtered data and summary
+            st.markdown("---")
+            st.subheader("📥 Export Data")
+            
+            col_exp1, col_exp2 = st.columns(2)
+            
+            with col_exp1:
+                csv_data, csv_filename = export_to_csv(
+                    filtered_df,
+                    f"sales_analysis_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                )
+                st.download_button(
+                    label="📥 Download Filtered Sales (CSV)",
+                    data=csv_data,
+                    file_name=csv_filename,
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            
+            with col_exp2:
+                summary_df = pd.DataFrame({
+                    'Product': top_items.index,
+                    'Total Sales': top_items.values
+                })
+                csv_summary, csv_summary_filename = export_to_csv(
+                    summary_df,
+                    f"top_products_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                )
+                st.download_button(
+                    label="📊 Download Top Products Report (CSV)",
+                    data=csv_summary,
+                    file_name=csv_summary_filename,
+                    mime="text/csv",
+                    use_container_width=True
+                )
         else:
             st.warning("No data found for this period.")
 
@@ -264,6 +349,43 @@ elif st.session_state.page == 'Inventory Forecast':
                                 hovermode='x unified'
                             )
                             st.plotly_chart(fig_forecast, use_container_width=True)
+                        
+                        # Export forecast data
+                        st.markdown("---")
+                        st.subheader("📥 Export Forecast")
+                        
+                        col_forecast_export1, col_forecast_export2 = st.columns(2)
+                        
+                        with col_forecast_export1:
+                            forecast_csv, forecast_csv_filename = export_to_csv(
+                                forecast[['Date', 'Predicted_Sales']],
+                                f"forecast_{item.replace(' ', '_')}"
+                            )
+                            st.download_button(
+                                label=f"📥 Download {item} Forecast (CSV)",
+                                data=forecast_csv,
+                                file_name=forecast_csv_filename,
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        
+                        with col_forecast_export2:
+                            detailed_forecast = forecast.copy()
+                            detailed_forecast['Product'] = item
+                            detailed_forecast['Stock_On_Hand'] = stock
+                            detailed_forecast['Forecast_Generated'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                            
+                            forecast_excel, forecast_excel_filename = export_to_excel(
+                                detailed_forecast,
+                                f"detailed_forecast_{item.replace(' ', '_')}"
+                            )
+                            st.download_button(
+                                label="📊 Download Detailed Report (Excel)",
+                                data=forecast_excel,
+                                file_name=forecast_excel_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
                         
                         # Calculate total needed
                         total_needed = forecast['Predicted_Sales'].sum()
