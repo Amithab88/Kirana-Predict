@@ -11,3 +11,4 @@ xgboost
 statsmodels
 cmdstanpy
 openpyxl
+sendgrid
