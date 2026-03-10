@@ -12,7 +12,7 @@ An AI-lite tool designed for Indian Kirana stores to prevent stock-outs and redu
 - Modular Architecture
 
 ## 📖 How to Run
-1. Ensure `pandas` is installed: `pip install pandas`
+1. Ensure all the requirements are installed: `pip install -r requirements.txt`
 2. Place your sales data in `data/grocery_chain_data.csv`
 3. Run the main app: `python main.py`
 4. Run the app.py : 'python -m streamlit run app.py'
