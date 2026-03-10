@@ -93,6 +93,193 @@ class KiranaDatabase:
         except Exception as e:
             print(f"❌ Error loading products: {e}")
             return pd.DataFrame()
+            
+    # ============================================
+    # STORE MANAGEMENT METHODS (PHASE 3)
+    # ============================================
+    
+    def get_all_stores(self):
+        """Get all stores"""
+        try:
+            response = self.supabase.table('stores').select('*').order('store_code').execute()
+            return pd.DataFrame(response.data) if response.data else pd.DataFrame()
+        except Exception as e:
+           print(f"❌ Error fetching stores: {e}")  # ✅ Changed from st.error
+           return pd.DataFrame()
+    
+    def get_active_stores(self):
+        """Get only active stores"""
+        try:
+            response = (
+                self.supabase.table('stores')
+                .select('*')
+                .eq('is_active', True)
+                .order('store_code')
+                .execute()
+            )
+            return pd.DataFrame(response.data) if response.data else pd.DataFrame()
+        except Exception as e:
+            print(f"❌ Error fetching active stores: {e}")  # ✅ Changed
+            return pd.DataFrame()
+    
+    def get_store_by_code(self, store_code):
+        """Get a single store by code"""
+        try:
+            response = (
+                self.supabase.table('stores')
+                .select('*')
+                .eq('store_code', store_code)
+                .execute()
+            )
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Error fetching store: {e}")
+            return None
+    
+    def add_store(self, store_data):
+        """
+        Add new store
+        store_data = {
+            'store_code': 'STORE005',
+            'store_name': 'Chennai Store',
+            'city': 'Chennai',
+            'state': 'Tamil Nadu',
+            'address': '...',
+            'pos_system': '...',
+            'is_active': True
+        }
+        """
+        try:
+            response = self.supabase.table('stores').insert(store_data).execute()
+            return True
+        except Exception as e:
+            print(f"Error adding store: {e}")
+            return False
+    
+    def update_store(self, store_code, update_data):
+        """Update store details"""
+        try:
+            response = (
+                self.supabase.table('stores')
+                .update(update_data)
+                .eq('store_code', store_code)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            print(f"Error updating store: {e}")
+            return False
+    
+    def delete_store(self, store_code):
+        """Delete store (soft delete - set inactive)"""
+        try:
+            response = (
+                self.supabase.table('stores')
+                .update({'is_active': False})
+                .eq('store_code', store_code)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            print(f"Error deleting store: {e}")
+            return False
+    
+    def get_sales_by_store(self, store_code=None):
+        """Get sales filtered by store"""
+        try:
+            query = self.supabase.table('sales').select('*')
+            if store_code:
+                query = query.eq('store_code', store_code)
+            response = query.execute()
+            
+            if response.data:
+                df = pd.DataFrame(response.data)
+                df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+                return df
+            return pd.DataFrame()
+        except Exception as e:
+            print(f"Error fetching sales by store: {e}")
+            return pd.DataFrame()
+    
+    def get_store_performance(self):
+        """Get performance metrics for all stores"""
+        try:
+            df = self.get_all_sales()
+            if df.empty:
+                return pd.DataFrame()
+            
+            # Group by store
+            store_perf = df.groupby('store_code').agg({
+                'total': 'sum',
+                'quantity': 'sum',
+                'transaction_id': 'count'
+            }).reset_index()
+            
+            store_perf.columns = ['store_code', 'total_revenue', 'total_quantity', 'total_transactions']
+            
+            # Merge with store details
+            stores = self.get_all_stores()
+            if not stores.empty:
+                store_perf = store_perf.merge(
+                    stores[['store_code', 'store_name', 'city', 'state']], 
+                    on='store_code', 
+                    how='left'
+                )
+            
+            # Calculate averages
+            store_perf['avg_transaction_value'] = (
+                store_perf['total_revenue'] / store_perf['total_transactions']
+            ).round(2)
+            
+            return store_perf.sort_values('total_revenue', ascending=False)
+        except Exception as e:
+            print(f"Error calculating store performance: {e}")
+            return pd.DataFrame()
+    
+    def get_store_product_performance(self, store_code):
+        """Get top products for a specific store"""
+        try:
+            df = self.get_sales_by_store(store_code)
+            if df.empty:
+                return pd.DataFrame()
+            
+            product_perf = df.groupby('product_name').agg({
+                'total': 'sum',
+                'quantity': 'sum',
+                'transaction_id': 'count'
+            }).reset_index()
+            
+            product_perf.columns = ['product_name', 'revenue', 'quantity_sold', 'transactions']
+            return product_perf.sort_values('revenue', ascending=False)
+        except Exception as e:
+            print(f"Error fetching store product performance: {e}")
+            return pd.DataFrame()
+    
+    def get_store_sales_trend(self, store_code, days=30):
+        """Get daily sales trend for a store"""
+        try:
+            df = self.get_sales_by_store(store_code)
+            if df.empty:
+                return pd.DataFrame()
+            
+            # Filter last N days
+            cutoff_date = df['transaction_date'].max() - timedelta(days=days)
+            df = df[df['transaction_date'] >= cutoff_date]
+            
+            # Group by date
+            daily_sales = df.groupby(df['transaction_date'].dt.date).agg({
+                'total': 'sum',
+                'quantity': 'sum',
+                'transaction_id': 'count'
+            }).reset_index()
+            
+            daily_sales.columns = ['date', 'revenue', 'quantity', 'transactions']
+            return daily_sales
+        except Exception as e:
+            print(f"Error fetching store sales trend: {e}")
+            return pd.DataFrame()
 
 
 # ========================================
