@@ -5,6 +5,7 @@ from database_manager import load_data_from_db
 from ml_engine import predict_future_demand
 from email_manager import EmailAlertManager
 from datetime import datetime, timedelta
+import time  # For timing / future use
 import io
 
 # ============================================
@@ -194,11 +195,22 @@ if st.session_state.page == 'Home':
         if st.button("Open Product Comparison", use_container_width=True, type="primary", key="btn_comparison"):
             ch_page('Product Comparison')
             st.rerun()
-        
+    
+    # Row 3: Alerts & Store Management
+    row3_col1, row3_col2 = st.columns(2)
+    
+    with row3_col1:
         st.subheader("📧 Alert Settings")
-        st.warning("⚙️ Configure email/SMS notifications.")
+        st.error("⚙️ Configure email notifications.")
         if st.button("Open Alert Settings", use_container_width=True, type="primary", key="btn_alerts"):
             ch_page('Alert Settings')
+            st.rerun()
+    
+    with row3_col2:
+        st.subheader("🏪 Store Management")
+        st.warning("📍 Manage multiple locations.")
+        if st.button("Open Store Management", use_container_width=True, type="primary", key="btn_stores"):
+            ch_page('Store Management')
             st.rerun()
     
     # Recent Activity Preview (filtered)
@@ -1255,6 +1267,146 @@ elif st.session_state.page == 'Alert Settings':
         - Test with small recipient list first
         - Monitor bounce rates
         """)
+
+# ============================================
+# STORE MANAGEMENT PAGE (PHASE 3)
+# ============================================
+elif st.session_state.page == 'Store Management':
+    st.title("🏪 Store Management")
+    st.markdown("### Manage and analyze performance across multiple store locations")
+    
+    st.markdown("---")
+    
+    # Ensure store_name column exists
+    if 'store_name' not in df.columns:
+        st.error("❌ No store information available. Make sure your data has a 'store_name' column.")
+    else:
+        # Overview metrics by store
+        store_group = df.groupby('store_name').agg(
+            total_revenue=('total_amount', 'sum'),
+            total_units=('quantity', 'sum'),
+            transactions=('transaction_id', 'nunique')
+        ).reset_index()
+        
+        st.subheader("📊 Store Overview")
+        st.dataframe(
+            store_group.rename(columns={
+                'store_name': 'Store',
+                'total_revenue': 'Revenue (₹)',
+                'total_units': 'Units Sold',
+                'transactions': 'Transactions'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        st.markdown("---")
+        st.subheader("📍 Store Performance Comparison")
+        
+        col_store_chart1, col_store_chart2 = st.columns(2)
+        
+        with col_store_chart1:
+            fig_store_rev = px.bar(
+                store_group,
+                x='store_name',
+                y='total_revenue',
+                title='Revenue by Store',
+                color='total_revenue',
+                color_continuous_scale='Blues',
+                labels={'store_name': 'Store', 'total_revenue': 'Revenue (₹)'}
+            )
+            fig_store_rev.update_layout(showlegend=False)
+            st.plotly_chart(fig_store_rev, use_container_width=True)
+        
+        with col_store_chart2:
+            fig_store_units = px.bar(
+                store_group,
+                x='store_name',
+                y='total_units',
+                title='Units Sold by Store',
+                color='total_units',
+                color_continuous_scale='Greens',
+                labels={'store_name': 'Store', 'total_units': 'Units Sold'}
+            )
+            fig_store_units.update_layout(showlegend=False)
+            st.plotly_chart(fig_store_units, use_container_width=True)
+        
+        # Store selector for detail view
+        st.markdown("---")
+        st.subheader("🔍 Store Detail View")
+        
+        selected_store = st.selectbox(
+            "Select Store",
+            sorted(df['store_name'].dropna().unique().tolist()),
+            key="store_management_store_select"
+        )
+        
+        store_df = df[df['store_name'] == selected_store].copy()
+        
+        if store_df.empty:
+            st.info(f"No sales data available for {selected_store} yet.")
+        else:
+            col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
+            
+            total_rev = store_df['total_amount'].sum()
+            total_units_store = store_df['quantity'].sum()
+            unique_products_store = store_df['product_name'].nunique()
+            
+            with col_metrics1:
+                st.metric("💰 Revenue", f"₹{total_rev:,.0f}")
+            with col_metrics2:
+                st.metric("📦 Units Sold", f"{total_units_store:,}")
+            with col_metrics3:
+                st.metric("🛒 Unique Products", unique_products_store)
+            
+            # Daily revenue trend for store
+            daily_store = store_df.groupby(store_df['transaction_date'].dt.date)['total_amount'].sum().reset_index()
+            daily_store.columns = ['Date', 'Revenue']
+            
+            st.markdown("#### 📈 Daily Revenue Trend")
+            fig_store_trend = px.line(
+                daily_store,
+                x='Date',
+                y='Revenue',
+                title=f'Daily Revenue - {selected_store}',
+                markers=True
+            )
+            fig_store_trend.update_layout(hovermode='x unified', yaxis_title='Revenue (₹)')
+            st.plotly_chart(fig_store_trend, use_container_width=True)
+            
+            # Top products for this store
+            st.markdown("#### 🏆 Top Products in Store")
+            top_store_products = (
+                store_df.groupby('product_name')['total_amount']
+                .sum()
+                .sort_values(ascending=False)
+                .head(10)
+            )
+            
+            if not top_store_products.empty:
+                fig_top_store = px.bar(
+                    x=top_store_products.values,
+                    y=top_store_products.index,
+                    orientation='h',
+                    title=f'Top 10 Products by Revenue - {selected_store}',
+                    color=top_store_products.values,
+                    color_continuous_scale='Purples',
+                    labels={'x': 'Revenue (₹)', 'y': 'Product'}
+                )
+                fig_top_store.update_layout(showlegend=False, height=400)
+                st.plotly_chart(fig_top_store, use_container_width=True)
+            
+            # Recent transactions
+            st.markdown("#### 📋 Recent Transactions")
+            recent_cols = ['transaction_date', 'product_name', 'quantity', 'unit_price', 'total_amount']
+            recent_display = store_df[recent_cols].sort_values('transaction_date', ascending=False).head(20)
+            recent_display['transaction_date'] = recent_display['transaction_date'].dt.strftime('%Y-%m-%d')
+            st.dataframe(recent_display, use_container_width=True, hide_index=True)
+
+# Placeholder Store Details page (for future deep-dive views)
+elif st.session_state.page == 'Store Details':
+    st.title("🏪 Store Details")
+    st.info("Detailed store view coming soon.")
 
 # ============================================
 # INVENTORY FORECAST PAGE
