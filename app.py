@@ -1286,6 +1286,9 @@ elif st.session_state.page == 'Store Management':
     stores_df = db.get_all_stores()
     store_perf = db.get_store_performance()
     
+    # Initialize active_stores early so it's always defined
+    active_stores = pd.DataFrame()
+    
     if not stores_df.empty:
         col1, col2, col3, col4 = st.columns(4)
         

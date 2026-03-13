@@ -212,7 +212,7 @@ class KiranaDatabase:
             
             # Group by store
             store_perf = df.groupby('store_code').agg({
-                'total': 'sum',
+                'total_amount': 'sum',  # ✅ FIXED
                 'quantity': 'sum',
                 'transaction_id': 'count'
             }).reset_index()
@@ -246,7 +246,7 @@ class KiranaDatabase:
                 return pd.DataFrame()
             
             product_perf = df.groupby('product_name').agg({
-                'total': 'sum',
+                'total_amount': 'sum',  # ✅ FIXED
                 'quantity': 'sum',
                 'transaction_id': 'count'
             }).reset_index()
