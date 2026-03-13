@@ -30,6 +30,7 @@ elif st.session_state.page == 'Store Management':
     st.markdown("---")
     
     # Tabs for different views
+    st.write("🔍 DEBUG: About to create tabs")
     tab1, tab2, tab3, tab4 = st.tabs([
         "📋 All Stores", 
         "➕ Add New Store", 

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from database_manager import load_data_from_db
+from database_manager import load_data_from_db, KiranaDatabase
 from ml_engine import predict_future_demand
 from email_manager import EmailAlertManager
 from datetime import datetime, timedelta
@@ -29,6 +29,9 @@ def export_to_excel(dataframe, filename_prefix):
 
 # Page Config
 st.set_page_config(page_title="Kirana-Predict Pro", layout="wide", page_icon="📦")
+
+# Shared database instance for advanced pages (stores, etc.)
+db = KiranaDatabase()
 
 # Data Loading
 try:
@@ -1271,138 +1274,402 @@ elif st.session_state.page == 'Alert Settings':
 # ============================================
 # STORE MANAGEMENT PAGE (PHASE 3)
 # ============================================
+# ============================================
+# STORE MANAGEMENT PAGE - FIXED VERSION
+# Copy this ENTIRE section to replace your Store Management page
+# ============================================
 elif st.session_state.page == 'Store Management':
-    st.title("🏪 Store Management")
-    st.markdown("### Manage and analyze performance across multiple store locations")
+    st.title("🏪 Multi-Store Management")
+    st.markdown("---")
+    
+    # Store Summary Cards
+    stores_df = db.get_all_stores()
+    store_perf = db.get_store_performance()
+    
+    if not stores_df.empty:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        active_stores = stores_df[stores_df['is_active'] == True]
+        
+        col1.metric("Total Stores", len(stores_df))
+        col2.metric("Active Stores", len(active_stores))
+        
+        if not store_perf.empty:
+            col3.metric("Total Revenue", f"₹{store_perf['total_revenue'].sum():,.0f}")
+            best_store = store_perf.iloc[0]['store_name'] if len(store_perf) > 0 else "N/A"
+            col4.metric("Top Performer", best_store)
     
     st.markdown("---")
     
-    # Ensure store_name column exists
-    if 'store_name' not in df.columns:
-        st.error("❌ No store information available. Make sure your data has a 'store_name' column.")
-    else:
-        # Overview metrics by store
-        store_group = df.groupby('store_name').agg(
-            total_revenue=('total_amount', 'sum'),
-            total_units=('quantity', 'sum'),
-            transactions=('transaction_id', 'nunique')
-        ).reset_index()
+    # ============================================
+    # TABS SECTION - THIS IS THE KEY PART!
+    # ============================================
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📋 All Stores", 
+        "➕ Add New Store", 
+        "📊 Store Performance", 
+        "🔄 Store Comparison"
+    ])
+    
+    # TAB 1: ALL STORES
+    with tab1:
+        st.subheader("📋 All Stores")
         
-        st.subheader("📊 Store Overview")
-        st.dataframe(
-            store_group.rename(columns={
-                'store_name': 'Store',
-                'total_revenue': 'Revenue (₹)',
-                'total_units': 'Units Sold',
-                'transactions': 'Transactions'
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
+        if not stores_df.empty:
+            # Display stores as cards
+            for idx, store in stores_df.iterrows():
+                with st.expander(
+                    f"{'🟢' if store['is_active'] else '🔴'} {store['store_name']} ({store['store_code']})",
+                    expanded=False
+                ):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.write(f"**Location:** {store['city']}, {store['state']}")
+                        st.write(f"**Address:** {store.get('address', 'N/A')}")
+                        st.write(f"**Store Code:** {store['store_code']}")
+                        st.write(f"**Status:** {'✅ Active' if store['is_active'] else '❌ Inactive'}")
+                        if store.get('pos_system'):
+                            st.write(f"**POS System:** {store['pos_system']}")
+                    
+                    with col2:
+                        # Get performance for this store
+                        if not store_perf.empty:
+                            perf = store_perf[store_perf['store_code'] == store['store_code']]
+                            if not perf.empty:
+                                st.metric("Revenue", f"₹{perf.iloc[0]['total_revenue']:,.0f}")
+                                st.metric("Transactions", f"{perf.iloc[0]['total_transactions']:,}")
+                    
+                    # Action buttons
+                    col_a, col_b, col_c = st.columns(3)
+                    
+                    with col_a:
+                        if st.button(f"View Details", key=f"view_{store['store_code']}"):
+                            st.session_state['selected_store'] = store['store_code']
+                            ch_page('Store Details')
+                            st.rerun()
+                    
+                    with col_b:
+                        new_status = not store['is_active']
+                        status_text = "Activate" if new_status else "Deactivate"
+                        if st.button(status_text, key=f"toggle_{store['store_code']}"):
+                            if db.update_store(store['store_code'], {'is_active': new_status}):
+                                st.success(f"Store {status_text}d!")
+                                st.rerun()
+                    
+                    with col_c:
+                        if st.button("Edit", key=f"edit_{store['store_code']}", type="primary"):
+                            st.session_state['edit_store'] = store['store_code']
+                            st.rerun()
+                    
+                    # Edit form (shown when Edit is clicked)
+                    if st.session_state.get('edit_store') == store['store_code']:
+                        st.markdown("---")
+                        st.subheader("✏️ Edit Store")
+                        
+                        with st.form(f"edit_form_{store['store_code']}"):
+                            new_name = st.text_input("Store Name", value=store['store_name'])
+                            new_city = st.text_input("City", value=store['city'])
+                            new_state = st.text_input("State", value=store['state'])
+                            new_address = st.text_area("Address", value=store.get('address', ''))
+                            new_pos = st.text_input("POS System", value=store.get('pos_system', ''))
+                            
+                            col_save, col_cancel = st.columns(2)
+                            
+                            with col_save:
+                                if st.form_submit_button("💾 Save Changes", type="primary"):
+                                    update_data = {
+                                        'store_name': new_name,
+                                        'city': new_city,
+                                        'state': new_state,
+                                        'address': new_address,
+                                        'pos_system': new_pos
+                                    }
+                                    if db.update_store(store['store_code'], update_data):
+                                        st.success("✅ Store updated successfully!")
+                                        st.session_state['edit_store'] = None
+                                        st.rerun()
+                            
+                            with col_cancel:
+                                if st.form_submit_button("❌ Cancel"):
+                                    st.session_state['edit_store'] = None
+                                    st.rerun()
+        else:
+            st.info("No stores found. Add your first store in the 'Add New Store' tab!")
+    
+    # TAB 2: ADD NEW STORE
+    with tab2:
+        st.subheader("➕ Add New Store")
         
-        st.markdown("---")
-        st.subheader("📍 Store Performance Comparison")
+        with st.form("add_store_form"):
+            st.write("Enter new store details:")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                store_code = st.text_input(
+                    "Store Code *", 
+                    placeholder="e.g., STORE005",
+                    help="Unique identifier (e.g., STORE005)"
+                )
+                store_name = st.text_input(
+                    "Store Name *", 
+                    placeholder="e.g., Chennai Branch"
+                )
+                city = st.text_input("City *", placeholder="e.g., Chennai")
+            
+            with col2:
+                state = st.text_input("State *", placeholder="e.g., Tamil Nadu")
+                pos_system = st.text_input(
+                    "POS System", 
+                    placeholder="e.g., Petpooja, Square, Custom"
+                )
+                is_active = st.checkbox("Active Store", value=True)
+            
+            address = st.text_area("Address", placeholder="Full store address")
+            
+            submitted = st.form_submit_button("➕ Add Store", type="primary")
+            
+            if submitted:
+                if not store_code or not store_name or not city or not state:
+                    st.error("❌ Please fill all required fields (marked with *)")
+                elif len(stores_df[stores_df['store_code'] == store_code]) > 0:
+                    st.error(f"❌ Store code '{store_code}' already exists!")
+                else:
+                    new_store = {
+                        'store_code': store_code.upper(),
+                        'store_name': store_name,
+                        'city': city,
+                        'state': state,
+                        'address': address,
+                        'pos_system': pos_system if pos_system else None,
+                        'is_active': is_active
+                    }
+                    
+                    if db.add_store(new_store):
+                        st.success(f"✅ Store '{store_name}' added successfully!")
+                        st.balloons()
+                        time.sleep(2)
+                        st.rerun()
+    
+    # TAB 3: STORE PERFORMANCE
+    with tab3:
+        st.subheader("📊 Store Performance Dashboard")
         
-        col_store_chart1, col_store_chart2 = st.columns(2)
-        
-        with col_store_chart1:
-            fig_store_rev = px.bar(
-                store_group,
+        if not store_perf.empty:
+            # Performance Table
+            st.dataframe(
+                store_perf[[
+                    'store_name', 'city', 'state', 
+                    'total_revenue', 'total_transactions', 
+                    'total_quantity', 'avg_transaction_value'
+                ]].style.format({
+                    'total_revenue': '₹{:,.0f}',
+                    'total_transactions': '{:,}',
+                    'total_quantity': '{:,}',
+                    'avg_transaction_value': '₹{:,.2f}'
+                }),
+                use_container_width=True
+            )
+            
+            # Revenue Chart
+            st.markdown("---")
+            st.subheader("💰 Revenue by Store")
+            
+            fig_revenue = px.bar(
+                store_perf,
                 x='store_name',
                 y='total_revenue',
-                title='Revenue by Store',
-                color='total_revenue',
-                color_continuous_scale='Blues',
-                labels={'store_name': 'Store', 'total_revenue': 'Revenue (₹)'}
+                color='city',
+                title="Total Revenue by Store",
+                labels={'total_revenue': 'Revenue (₹)', 'store_name': 'Store'}
             )
-            fig_store_rev.update_layout(showlegend=False)
-            st.plotly_chart(fig_store_rev, use_container_width=True)
-        
-        with col_store_chart2:
-            fig_store_units = px.bar(
-                store_group,
+            st.plotly_chart(fig_revenue, use_container_width=True)
+            
+            # Transaction Volume
+            st.markdown("---")
+            st.subheader("📦 Transaction Volume")
+            
+            fig_trans = px.bar(
+                store_perf,
                 x='store_name',
-                y='total_units',
-                title='Units Sold by Store',
-                color='total_units',
-                color_continuous_scale='Greens',
-                labels={'store_name': 'Store', 'total_units': 'Units Sold'}
+                y='total_transactions',
+                title="Total Transactions by Store",
+                labels={'total_transactions': 'Transactions', 'store_name': 'Store'}
             )
-            fig_store_units.update_layout(showlegend=False)
-            st.plotly_chart(fig_store_units, use_container_width=True)
-        
-        # Store selector for detail view
-        st.markdown("---")
-        st.subheader("🔍 Store Detail View")
-        
-        selected_store = st.selectbox(
-            "Select Store",
-            sorted(df['store_name'].dropna().unique().tolist()),
-            key="store_management_store_select"
-        )
-        
-        store_df = df[df['store_name'] == selected_store].copy()
-        
-        if store_df.empty:
-            st.info(f"No sales data available for {selected_store} yet.")
+            st.plotly_chart(fig_trans, use_container_width=True)
         else:
-            col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
-            
-            total_rev = store_df['total_amount'].sum()
-            total_units_store = store_df['quantity'].sum()
-            unique_products_store = store_df['product_name'].nunique()
-            
-            with col_metrics1:
-                st.metric("💰 Revenue", f"₹{total_rev:,.0f}")
-            with col_metrics2:
-                st.metric("📦 Units Sold", f"{total_units_store:,}")
-            with col_metrics3:
-                st.metric("🛒 Unique Products", unique_products_store)
-            
-            # Daily revenue trend for store
-            daily_store = store_df.groupby(store_df['transaction_date'].dt.date)['total_amount'].sum().reset_index()
-            daily_store.columns = ['Date', 'Revenue']
-            
-            st.markdown("#### 📈 Daily Revenue Trend")
-            fig_store_trend = px.line(
-                daily_store,
-                x='Date',
-                y='Revenue',
-                title=f'Daily Revenue - {selected_store}',
-                markers=True
-            )
-            fig_store_trend.update_layout(hovermode='x unified', yaxis_title='Revenue (₹)')
-            st.plotly_chart(fig_store_trend, use_container_width=True)
-            
-            # Top products for this store
-            st.markdown("#### 🏆 Top Products in Store")
-            top_store_products = (
-                store_df.groupby('product_name')['total_amount']
-                .sum()
-                .sort_values(ascending=False)
-                .head(10)
+            st.info("No sales data available for performance analysis.")
+    
+    # TAB 4: STORE COMPARISON
+    with tab4:
+        st.subheader("🔄 Compare Stores")
+        
+        if len(active_stores) >= 2:
+            # Select stores to compare
+            store_options = active_stores['store_name'].tolist()
+            selected_stores = st.multiselect(
+                "Select 2-4 stores to compare:",
+                options=store_options,
+                default=store_options[:2] if len(store_options) >= 2 else store_options
             )
             
-            if not top_store_products.empty:
-                fig_top_store = px.bar(
-                    x=top_store_products.values,
-                    y=top_store_products.index,
-                    orientation='h',
-                    title=f'Top 10 Products by Revenue - {selected_store}',
-                    color=top_store_products.values,
-                    color_continuous_scale='Purples',
-                    labels={'x': 'Revenue (₹)', 'y': 'Product'}
-                )
-                fig_top_store.update_layout(showlegend=False, height=400)
-                st.plotly_chart(fig_top_store, use_container_width=True)
-            
-            # Recent transactions
-            st.markdown("#### 📋 Recent Transactions")
-            recent_cols = ['transaction_date', 'product_name', 'quantity', 'unit_price', 'total_amount']
-            recent_display = store_df[recent_cols].sort_values('transaction_date', ascending=False).head(20)
-            recent_display['transaction_date'] = recent_display['transaction_date'].dt.strftime('%Y-%m-%d')
-            st.dataframe(recent_display, use_container_width=True, hide_index=True)
+            if len(selected_stores) >= 2:
+                # Get store codes
+                selected_codes = active_stores[
+                    active_stores['store_name'].isin(selected_stores)
+                ]['store_code'].tolist()
+                
+                # Get sales data
+                comparison_data = []
+                for code in selected_codes:
+                    store_sales = db.get_sales_by_store(code)
+                    if not store_sales.empty:
+                        comparison_data.append({
+                            'store_code': code,
+                            'store_name': active_stores[active_stores['store_code'] == code].iloc[0]['store_name'],
+                            'total_revenue': store_sales['total'].sum(),
+                            'total_quantity': store_sales['quantity'].sum(),
+                            'transactions': len(store_sales),
+                            'unique_products': store_sales['product_name'].nunique()
+                        })
+                
+                if comparison_data:
+                    comp_df = pd.DataFrame(comparison_data)
+                    
+                    # Comparison metrics
+                    cols = st.columns(len(selected_stores))
+                    for idx, row in comp_df.iterrows():
+                        with cols[idx]:
+                            st.metric(row['store_name'], f"₹{row['total_revenue']:,.0f}")
+                            st.write(f"📦 {row['transactions']:,} transactions")
+                            st.write(f"🛍️ {row['unique_products']} products")
+                    
+                    # Side-by-side charts
+                    st.markdown("---")
+                    
+                    fig_comp = px.bar(
+                        comp_df,
+                        x='store_name',
+                        y=['total_revenue', 'total_quantity'],
+                        barmode='group',
+                        title="Revenue & Quantity Comparison"
+                    )
+                    st.plotly_chart(fig_comp, use_container_width=True)
+            else:
+                st.info("Please select at least 2 stores to compare.")
+        else:
+            st.warning("You need at least 2 active stores to use this feature.")
 
+
+# ============================================
+# STORE DETAILS PAGE
+# ============================================
+elif st.session_state.page == 'Store Details':
+    if 'selected_store' not in st.session_state:
+        st.warning("No store selected!")
+        if st.button("← Back to Store Management"):
+            ch_page('Store Management')
+            st.rerun()
+    else:
+        store_code = st.session_state['selected_store']
+        store = db.get_store_by_code(store_code)
+        
+        if not store:
+            st.error("Store not found!")
+        else:
+            # Header
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.title(f"🏪 {store['store_name']}")
+                st.caption(f"{store['city']}, {store['state']}")
+            with col2:
+                if st.button("← Back"):
+                    ch_page('Store Management')
+                    st.rerun()
+            
+            st.markdown("---")
+            
+            # Store Info
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Store Code", store['store_code'])
+            col2.metric("Status", "✅ Active" if store['is_active'] else "❌ Inactive")
+            col3.metric("POS System", store.get('pos_system', 'N/A'))
+            
+            st.markdown("---")
+            
+            # Get store performance
+            store_sales = db.get_sales_by_store(store_code)
+            
+            if not store_sales.empty:
+                # KPIs
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Total Revenue", f"₹{store_sales['total'].sum():,.0f}")
+                col2.metric("Transactions", f"{len(store_sales):,}")
+                col3.metric("Products Sold", f"{store_sales['quantity'].sum():,}")
+                col4.metric("Avg Transaction", f"₹{store_sales['total'].mean():,.2f}")
+                
+                st.markdown("---")
+                
+                # Tabs
+                tab1, tab2, tab3 = st.tabs([
+                    "📈 Sales Trend",
+                    "🏆 Top Products",
+                    "📊 Detailed Data"
+                ])
+                
+                with tab1:
+                    st.subheader("30-Day Sales Trend")
+                    trend = db.get_store_sales_trend(store_code, days=30)
+                    if not trend.empty:
+                        fig = px.line(
+                            trend,
+                            x='date',
+                            y='revenue',
+                            title="Daily Revenue",
+                            labels={'revenue': 'Revenue (₹)', 'date': 'Date'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                with tab2:
+                    st.subheader("Top 10 Products")
+                    top_products = db.get_store_product_performance(store_code).head(10)
+                    if not top_products.empty:
+                        fig = px.bar(
+                            top_products,
+                            x='product_name',
+                            y='revenue',
+                            title="Revenue by Product",
+                            labels={'revenue': 'Revenue (₹)'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        st.dataframe(
+                            top_products.style.format({
+                                'revenue': '₹{:,.0f}',
+                                'quantity_sold': '{:,}',
+                                'transactions': '{:,}'
+                            }),
+                            use_container_width=True
+                        )
+                
+                with tab3:
+                    st.subheader("All Transactions")
+                    st.dataframe(
+                        store_sales.sort_values('transaction_date', ascending=False),
+                        use_container_width=True
+                    )
+                    
+                    # Export
+                    csv = store_sales.to_csv(index=False)
+                    st.download_button(
+                        "📥 Download Store Data (CSV)",
+                        csv,
+                        file_name=f"{store_code}_sales_data.csv",
+                        mime="text/csv"
+                    )
+            else:
+                st.info(f"No sales data available for {store['store_name']} yet.")
 # Placeholder Store Details page (for future deep-dive views)
 elif st.session_state.page == 'Store Details':
     st.title("🏪 Store Details")
