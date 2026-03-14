@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime
 import uvicorn
-from database_manager import KiranaDatabase
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.database_manager import KiranaDatabase
 
 # Initialize FastAPI App
 app = FastAPI(title="Kirana-Predict POS Integration API")

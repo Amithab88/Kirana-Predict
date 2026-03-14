@@ -6,9 +6,12 @@ altair==5.3.0
 numpy
 supabase
 python-dotenv
-prophet 
-xgboost 
+prophet
+xgboost
 statsmodels
 cmdstanpy
 openpyxl
 sendgrid
+fastapi
+uvicorn[standard]
+requests

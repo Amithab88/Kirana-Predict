@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from database_manager import load_data_from_db, KiranaDatabase
-from ml_engine import predict_future_demand
-from email_manager import EmailAlertManager
+from core.database_manager import load_data_from_db, KiranaDatabase
+from core.ml_engine import predict_future_demand
+from core.email_manager import EmailAlertManager
 from datetime import datetime, timedelta
 import time  # For timing / future use
 import io

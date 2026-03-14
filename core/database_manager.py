@@ -3,7 +3,10 @@
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from database_connection import get_supabase_client
+try:
+    from core.database_connection import get_supabase_client
+except ImportError:
+    from database_connection import get_supabase_client
 
 class KiranaDatabase:
     """
