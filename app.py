@@ -74,18 +74,68 @@ if 'transaction_id' not in df.columns:
     # Create a simple sequential transaction identifier if missing
     df['transaction_id'] = [f"TXN_AUTO_{i+1}" for i in range(len(df))]
 
-# 1. Initialize session state for navigation
+# 1. Initialize session state for navigation and auth
 if 'page' not in st.session_state:
     st.session_state.page = 'Home'
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
+
+# ============================================
+# LOGIN PAGE
+# ============================================
+if not st.session_state.authenticated:
+    st.title("🔐 Kirana-Predict Pro Login")
+    st.markdown("Please log in to access the system.")
+    
+    with st.form("login_form"):
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+        
+        if submit:
+            if not email or not password:
+                st.error("Please provide both email and password")
+            else:
+                with st.spinner("Authenticating..."):
+                    auth_result = db.authenticate_user(email, password)
+                    if auth_result.get("success"):
+                        user_id = auth_result["user"].id
+                        role = db.get_user_role(user_id)
+                        
+                        st.session_state.authenticated = True
+                        st.session_state.user_email = email
+                        st.session_state.user_role = role
+                        st.success(f"Logged in successfully as {role}!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"Login failed: {auth_result.get('error')}")
+    st.stop() # Stop execution until logged in
 
 # 2. Function to change pages
 def ch_page(page_name):
     st.session_state.page = page_name
 
-# 3. Top Navigation Bar
-if st.session_state.page != 'Home':
-    if st.button("⬅️ Back to Home"):
-        ch_page('Home')
+# 3. Top Navigation Bar & Logout
+col_nav, col_logout = st.columns([4, 1])
+
+with col_nav:
+    if st.session_state.page != 'Home':
+        if st.button("⬅️ Back to Home"):
+            ch_page('Home')
+            st.rerun()
+
+with col_logout:
+    st.markdown(f"👤 **{st.session_state.user_email}** ({st.session_state.user_role})")
+    if st.button("Logout"):
+        db.sign_out()
+        st.session_state.authenticated = False
+        st.session_state.user_role = None
+        st.session_state.user_email = None
         st.rerun()
 
 # ============================================
@@ -174,17 +224,24 @@ if st.session_state.page == 'Home':
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Sales Analytics")
-        st.info("📈 View top-selling products and trends.")
-        if st.button("Open Sales Analysis", use_container_width=True, type="primary", key="btn_sales"):
-            ch_page('Sales Analysis')
-            st.rerun()
-        
-        st.subheader("📈 Advanced Analytics")
-        st.success("🔥 Deep insights with visual analytics.")
-        if st.button("Open Advanced Analytics", use_container_width=True, type="primary", key="btn_analytics"):
-            ch_page('Advanced Analytics')
-            st.rerun()
+        if st.session_state.user_role == 'Admin':
+            st.subheader("📊 Sales Analytics")
+            st.info("📈 View top-selling products and trends.")
+            if st.button("Open Sales Analysis", use_container_width=True, type="primary", key="btn_sales"):
+                ch_page('Sales Analysis')
+                st.rerun()
+            
+            st.subheader("📈 Advanced Analytics")
+            st.success("🔥 Deep insights with visual analytics.")
+            if st.button("Open Advanced Analytics", use_container_width=True, type="primary", key="btn_analytics"):
+                ch_page('Advanced Analytics')
+                st.rerun()
+        else:
+            st.subheader("➕ Add New Sale")
+            st.info("Manual Entry for missing stock")
+            if st.button("Open Manual Entry", use_container_width=True, type="primary", key="btn_add_sale"):
+                ch_page('Add Sale')
+                st.rerun()
     
     with col2:
         st.subheader("🔮 AI Forecasting")
@@ -193,28 +250,32 @@ if st.session_state.page == 'Home':
             ch_page('Inventory Forecast')
             st.rerun()
         
-        st.subheader("⚖️ Product Comparison")
-        st.info("📊 Compare 2-4 products side-by-side.")
-        if st.button("Open Product Comparison", use_container_width=True, type="primary", key="btn_comparison"):
-            ch_page('Product Comparison')
-            st.rerun()
+        if st.session_state.user_role == 'Admin':
+            st.subheader("⚖️ Product Comparison")
+            st.info("📊 Compare 2-4 products side-by-side.")
+            if st.button("Open Product Comparison", use_container_width=True, type="primary", key="btn_comparison"):
+                ch_page('Product Comparison')
+                st.rerun()
     
-    # Row 3: Alerts & Store Management
-    row3_col1, row3_col2 = st.columns(2)
-    
-    with row3_col1:
-        st.subheader("📧 Alert Settings")
-        st.error("⚙️ Configure email notifications.")
-        if st.button("Open Alert Settings", use_container_width=True, type="primary", key="btn_alerts"):
-            ch_page('Alert Settings')
-            st.rerun()
-    
-    with row3_col2:
-        st.subheader("🏪 Store Management")
-        st.warning("📍 Manage multiple locations.")
-        if st.button("Open Store Management", use_container_width=True, type="primary", key="btn_stores"):
-            ch_page('Store Management')
-            st.rerun()
+    # Row 3: Alerts & Store Management (Only for Admin)
+    if st.session_state.user_role == 'Admin':
+        row3_col1, row3_col2 = st.columns(2)
+        
+        with row3_col1:
+            st.subheader("📧 Alert Settings")
+            st.error("⚙️ Configure email notifications.")
+            if st.button("Open Alert Settings", use_container_width=True, type="primary", key="btn_alerts"):
+                ch_page('Alert Settings')
+                st.rerun()
+        
+        with row3_col2:
+            st.subheader("🏪 Store Management")
+            st.warning("📍 Manage multiple locations.")
+            if st.button("Open Store Management", use_container_width=True, type="primary", key="btn_stores"):
+                ch_page('Store Management')
+                st.rerun()
+    else:
+        st.info("🔒 Contact your Admin to access Alert Settings or Store Management.")
     
     # Recent Activity Preview (filtered)
     st.markdown("---")
@@ -1935,10 +1996,66 @@ elif st.session_state.page == 'Inventory Forecast':
                 except Exception as e:
                     st.error(f"❌ Prediction Error: {str(e)}")
                     st.info("💡 Try selecting a different product or adjusting the lookback period")
-                    
                     # Show debug info in expander
                     with st.expander("🔍 Debug Information"):
                         st.write("**Error Details:**")
                         st.code(str(e))
                         st.write("**Item Data Shape:**", item_data.shape)
                         st.write("**Date Range:**", item_data['transaction_date'].min(), "to", item_data['transaction_date'].max())
+
+# ============================================
+# ADD SALE PAGE (STAFF / MANUAL ENTRY)
+# ============================================
+elif st.session_state.page == 'Add Sale':
+    st.title("➕ Add New Sale")
+    st.markdown("Manually record a transaction into the database.")
+    
+    with st.form("manual_sale_form"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            product_name = st.text_input("Product Name *", placeholder="e.g., Aashirvaad Atta 5kg")
+            quantity = st.number_input("Quantity *", min_value=1, step=1)
+            unit_price = st.number_input("Unit Price (₹) *", min_value=0.0, step=0.5)
+            
+        with col2:
+            if 'store_name' in df.columns:
+                all_stores = sorted(df['store_name'].dropna().unique().tolist())
+            else:
+                all_stores = ['Main Store']
+            store_name = st.selectbox("Store", all_stores)
+            category = st.text_input("Category", placeholder="e.g., Groceries")
+            
+        submitted = st.form_submit_button("Submit Sale", type="primary")
+        
+        if submitted:
+            if not product_name or quantity <= 0 or unit_price <= 0:
+                st.error("❌ Please provide valid Product Name, Quantity (>=1), and Unit Price (>=0).")
+            else:
+                try:
+                    # In a real app we'd map store_name -> store_code. For now just passing store_name
+                    # or creating a dummy store code. Let's get the code if possible:
+                    store_code_val = "STORE_UNKNOWN"
+                    stores_df = db.get_all_stores()
+                    if not stores_df.empty:
+                        matched = stores_df[stores_df['store_name'] == store_name]
+                        if not matched.empty:
+                            store_code_val = matched.iloc[0]['store_code']
+                            
+                    sale_data = {
+                        "product_name": product_name,
+                        "quantity": quantity,
+                        "unit_price": unit_price,
+                        "store_code": store_code_val,
+                        "total_amount": quantity * unit_price,
+                        "category": category if category else "Uncategorized"
+                    }
+                    
+                    db.add_sale(sale_data, source='manual_entry')
+                    st.success(f"✅ Sale of {quantity} x {product_name} recorded successfully!")
+                    st.balloons()
+                    time.sleep(1.5)
+                    ch_page('Home')
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to record sale: {e}")

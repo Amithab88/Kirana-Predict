@@ -14,6 +14,42 @@ class KiranaDatabase:
     def __init__(self):
         """Initialize database connection"""
         self.supabase = get_supabase_client()
+        
+    # ============================================
+    # AUTHENTICATION METHODS
+    # ============================================
+    
+    def authenticate_user(self, email: str, password: str) -> Dict:
+        """Sign in user and return session info"""
+        try:
+            response = self.supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password,
+            })
+            return {"success": True, "user": response.user}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_user_role(self, user_id: str) -> str:
+        """Fetch custom role for user from a users or roles table"""
+        try:
+            # We assume there is a 'user_roles' table mapping user_id to role.
+            # If it doesn't exist, we will default to 'Staff' to be safe.
+            # You can also use user metadata if configured in Supabase.
+            response = self.supabase.table('user_roles').select('role').eq('user_id', user_id).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0].get('role', 'Staff')
+            return 'Staff'
+        except Exception:
+            return 'Staff'
+            
+    def sign_out(self):
+        """Sign out the current user"""
+        try:
+            self.supabase.auth.sign_out()
+            return True
+        except Exception:
+            return False
     
     def add_sale(self, sale_data: Dict[str, Any], source: str = 'manual') -> Dict:
         """Add a single sale transaction"""
