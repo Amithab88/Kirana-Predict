@@ -5,7 +5,7 @@ from core.database_manager import load_data_from_db, KiranaDatabase
 from core.ml_engine import predict_future_demand
 from core.email_manager import EmailAlertManager
 from datetime import datetime, timedelta
-import time  # For timing / future use
+import time
 import io
 
 # ============================================
@@ -27,17 +27,105 @@ def export_to_excel(dataframe, filename_prefix):
     output.seek(0)
     return output.getvalue(), f"{filename_prefix}_{timestamp}.xlsx"
 
-# Page Config
+# ============================================
+# RBAC HELPER
+# ============================================
+
+# Admin-only pages that Staff must not access
+ADMIN_ONLY_PAGES = {
+    'Sales Analysis', 'Advanced Analytics', 'Product Comparison',
+    'Alert Settings', 'Store Management', 'Store Details', 'Store Comparison'
+}
+
+def require_admin():
+    """Stop rendering and show an error if the current user is not an Admin."""
+    if st.session_state.get('user_role') != 'Admin':
+        st.error("🔒 Access Denied: This page is for Admins only.")
+        st.info("Contact your store manager to request access.")
+        if st.button("⬅️ Return to Home"):
+            st.session_state.page = 'Home'
+            st.rerun()
+        st.stop()
+
+# ============================================
+# PAGE CONFIG & DB INSTANCE
+# ============================================
+
 st.set_page_config(page_title="Kirana-Predict Pro", layout="wide", page_icon="📦")
 
-# Shared database instance for advanced pages (stores, etc.)
+# Shared database instance (used for auth AND data operations)
 db = KiranaDatabase()
 
-# Data Loading
+# ============================================
+# SESSION STATE INIT  (must run before login check)
+# ============================================
+
+if 'page' not in st.session_state:
+    st.session_state.page = 'Home'
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
+
+# ============================================
+# LOGIN PAGE  (shown BEFORE any DB data loads)
+# ============================================
+if not st.session_state.authenticated:
+    # Themed login UI
+    st.markdown(
+        """
+        <style>
+        .login-header { text-align: center; padding: 2rem 0 1rem; }
+        .login-header h1 { font-size: 2.5rem; }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown('<div class="login-header">', unsafe_allow_html=True)
+    st.title("📦 Kirana-Predict Pro")
+    st.markdown("**Please log in to access the dashboard.**")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    col_login, _ = st.columns([1, 1])
+    with col_login:
+        with st.form("login_form"):
+            email = st.text_input("📧 Email", placeholder="you@example.com")
+            password = st.text_input("🔑 Password", type="password", placeholder="Your password")
+            submit = st.form_submit_button("🔐 Login", use_container_width=True)
+
+            if submit:
+                if not email or not password:
+                    st.error("⚠️ Please provide both email and password.")
+                else:
+                    with st.spinner("Authenticating with Supabase…"):
+                        auth_result = db.authenticate_user(email, password)
+                        if auth_result.get("success"):
+                            user_id = auth_result["user"].id
+                            role = db.get_user_role(user_id)
+
+                            st.session_state.authenticated = True
+                            st.session_state.user_email = email
+                            st.session_state.user_role = role
+                            st.success(f"✅ Logged in as **{role}**!  Redirecting…")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            err = auth_result.get('error', 'Unknown error')
+                            st.error(f"❌ Login failed: {err}")
+                            st.caption("Hint: Make sure you have a Supabase Auth account set up.")
+    st.stop()  # Nothing else renders until authenticated
+
+# ============================================
+# DATA LOADING  (only after successful login)
+# ============================================
+
 try:
     df = load_data_from_db()
     if df.empty:
-        st.error("❌ No data in database. Please add sales data in Supabase.")
+        st.error("❌ No sales data found in database. Please add sales data in Supabase.")
         st.stop()
 except Exception as e:
     st.error(f"❌ Database connection failed: {str(e)}")
@@ -45,10 +133,8 @@ except Exception as e:
     st.stop()
 
 try:
-    # Prefer an explicit transaction date column if present
     if 'transaction_date' in df.columns:
         df['transaction_date'] = pd.to_datetime(df['transaction_date'])
-    # Fallback: some pipelines may only store created_at
     elif 'created_at' in df.columns:
         df['transaction_date'] = pd.to_datetime(df['created_at'])
     else:
@@ -60,61 +146,15 @@ except Exception as e:
     st.error(f"❌ Date conversion error: {str(e)}")
     st.stop()
 
-# Normalize optional columns used in filters/metrics
+# Normalize optional columns
 if 'store_name' not in df.columns:
     df['store_name'] = 'Main Store'
-
 if 'data_source' not in df.columns:
     df['data_source'] = 'manual'
-
 if 'total_amount' not in df.columns and 'quantity' in df.columns and 'unit_price' in df.columns:
     df['total_amount'] = df['quantity'] * df['unit_price']
-
 if 'transaction_id' not in df.columns:
-    # Create a simple sequential transaction identifier if missing
     df['transaction_id'] = [f"TXN_AUTO_{i+1}" for i in range(len(df))]
-
-# 1. Initialize session state for navigation and auth
-if 'page' not in st.session_state:
-    st.session_state.page = 'Home'
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'user_role' not in st.session_state:
-    st.session_state.user_role = None
-if 'user_email' not in st.session_state:
-    st.session_state.user_email = None
-
-# ============================================
-# LOGIN PAGE
-# ============================================
-if not st.session_state.authenticated:
-    st.title("🔐 Kirana-Predict Pro Login")
-    st.markdown("Please log in to access the system.")
-    
-    with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Login")
-        
-        if submit:
-            if not email or not password:
-                st.error("Please provide both email and password")
-            else:
-                with st.spinner("Authenticating..."):
-                    auth_result = db.authenticate_user(email, password)
-                    if auth_result.get("success"):
-                        user_id = auth_result["user"].id
-                        role = db.get_user_role(user_id)
-                        
-                        st.session_state.authenticated = True
-                        st.session_state.user_email = email
-                        st.session_state.user_role = role
-                        st.success(f"Logged in successfully as {role}!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error(f"Login failed: {auth_result.get('error')}")
-    st.stop() # Stop execution until logged in
 
 # 2. Function to change pages
 def ch_page(page_name):
@@ -290,9 +330,10 @@ if st.session_state.page == 'Home':
         st.warning("⚠️ No records match your filters")
 
 # ============================================
-# SALES ANALYSIS PAGE
+# SALES ANALYSIS PAGE  [Admin only]
 # ============================================
 elif st.session_state.page == 'Sales Analysis':
+    require_admin()
     st.title("📊 Sales Insights")
     
     # Filter section
@@ -431,9 +472,10 @@ elif st.session_state.page == 'Sales Analysis':
             st.warning("No data found for this period.")
 
 # ============================================
-# ADVANCED ANALYTICS DASHBOARD (Feature 3)
+# ADVANCED ANALYTICS DASHBOARD  [Admin only]
 # ============================================
 elif st.session_state.page == 'Advanced Analytics':
+    require_admin()
     st.title("📈 Advanced Analytics Dashboard")
     st.markdown("### Deep Business Insights & Performance Metrics")
     
@@ -748,9 +790,10 @@ elif st.session_state.page == 'Advanced Analytics':
             )
 
 # ============================================
-# PRODUCT COMPARISON PAGE (Feature 4)
+# PRODUCT COMPARISON PAGE  [Admin only]
 # ============================================
 elif st.session_state.page == 'Product Comparison':
+    require_admin()
     st.title("⚖️ Multi-Product Comparison")
     st.markdown("### Compare sales performance across multiple products")
     
@@ -1095,9 +1138,10 @@ elif st.session_state.page == 'Product Comparison':
         st.markdown("• Monitor declining trends and investigate causes")
 
 # ============================================
-# ALERT SETTINGS PAGE (Feature 5)
+# ALERT SETTINGS PAGE (Feature 5)  [Admin only]
 # ============================================
 elif st.session_state.page == 'Alert Settings':
+    require_admin()
     st.title("📧 Email Alert Settings")
     st.markdown("### Configure automated notifications and reports")
     
@@ -1335,11 +1379,10 @@ elif st.session_state.page == 'Alert Settings':
 # ============================================
 # STORE MANAGEMENT PAGE (PHASE 3)
 # ============================================
-# ============================================
-# STORE MANAGEMENT PAGE - FIXED VERSION
-# Copy this ENTIRE section to replace your Store Management page
+# STORE MANAGEMENT PAGE  [Admin only]
 # ============================================
 elif st.session_state.page == 'Store Management':
+    require_admin()
     st.title("🏪 Multi-Store Management")
     st.markdown("---")
     
