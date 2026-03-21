@@ -134,8 +134,8 @@ def render(df: pd.DataFrame, ch_page):
             if st.button("Open Store Management", use_container_width=True, type="primary", key="btn_stores"):
                 ch_page('Store Management')
                 st.rerun()
-        # Row 4: Inventory Dashboard (Admin only)
-    if role == 'Admin':
+        
+        # Row 4: Inventory Dashboard & Stock Inward (Admin only)
         row4_col1, row4_col2 = st.columns(2)
         
         with row4_col1:
@@ -143,6 +143,23 @@ def render(df: pd.DataFrame, ch_page):
             st.success("📊 Real-time stock tracking & reorder alerts.")
             if st.button("Open Inventory Dashboard", use_container_width=True, type="primary", key="btn_inventory"):
                 ch_page('Inventory Dashboard')
+                st.rerun()
+        
+        with row4_col2:
+            st.subheader("📥 Stock Inward")
+            st.info("📦 Record new inventory arrivals.")
+            if st.button("Open Stock Inward", use_container_width=True, type="primary", key="btn_stock_inward"):
+                ch_page('Stock Inward')
+                st.rerun()
+        
+        # Row 5: Store Transfer (Admin only)
+        row5_col1, row5_col2 = st.columns(2)
+        
+        with row5_col1:
+            st.subheader("🔄 Store Transfer")
+            st.warning("↔️ Transfer stock between stores.")
+            if st.button("Open Store Transfer", use_container_width=True, type="primary", key="btn_transfer"):
+                ch_page('Store Transfer')
                 st.rerun()
     else:
         st.info("🔒 Contact your Admin to access Alert Settings or Store Management.")

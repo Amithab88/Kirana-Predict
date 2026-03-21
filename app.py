@@ -15,7 +15,9 @@ from app import (
     alert_settings_page,
     store_management_page,
     add_sale_page,
-    inventory_dashboard  # ← ADD THIS LINE
+    inventory_dashboard,
+    stock_inward_page,       
+    store_transfer_page   
 )
 
 # ── Config & shared DB instance ───────────────────────────────────────────
@@ -147,6 +149,12 @@ elif page == 'Store Management':
 elif st.session_state.page == 'Inventory Dashboard':
     inventory_dashboard.render(db)
 
+elif st.session_state.page == 'Stock Inward':
+    stock_inward_page.render(db)
+
+elif st.session_state.page == 'Store Transfer':
+    store_transfer_page.render(db)
+    
 elif page == 'Store Details':
     store_management_page.render_store_details(db)
 
