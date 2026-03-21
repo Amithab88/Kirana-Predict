@@ -309,7 +309,7 @@ class KiranaDatabase:
             
             # Group by date
             daily_sales = df.groupby(df['transaction_date'].dt.date).agg({
-                'total': 'sum',
+                'total_amount': 'sum',
                 'quantity': 'sum',
                 'transaction_id': 'count'
             }).reset_index()

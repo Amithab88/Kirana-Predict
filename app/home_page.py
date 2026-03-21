@@ -134,6 +134,16 @@ def render(df: pd.DataFrame, ch_page):
             if st.button("Open Store Management", use_container_width=True, type="primary", key="btn_stores"):
                 ch_page('Store Management')
                 st.rerun()
+        # Row 4: Inventory Dashboard (Admin only)
+    if role == 'Admin':
+        row4_col1, row4_col2 = st.columns(2)
+        
+        with row4_col1:
+            st.subheader("📦 Inventory Dashboard")
+            st.success("📊 Real-time stock tracking & reorder alerts.")
+            if st.button("Open Inventory Dashboard", use_container_width=True, type="primary", key="btn_inventory"):
+                ch_page('Inventory Dashboard')
+                st.rerun()
     else:
         st.info("🔒 Contact your Admin to access Alert Settings or Store Management.")
 

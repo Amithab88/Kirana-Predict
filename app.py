@@ -15,6 +15,7 @@ from app import (
     alert_settings_page,
     store_management_page,
     add_sale_page,
+    inventory_dashboard  # ← ADD THIS LINE
 )
 
 # ── Config & shared DB instance ───────────────────────────────────────────
@@ -142,6 +143,9 @@ elif page == 'Alert Settings':
 elif page == 'Store Management':
     require_admin()
     store_management_page.render(db)
+
+elif st.session_state.page == 'Inventory Dashboard':
+    inventory_dashboard.render(db)
 
 elif page == 'Store Details':
     store_management_page.render_store_details(db)
