@@ -179,7 +179,7 @@ def render(db: KiranaDatabase):
             st.markdown("---")
             
             # Detailed table
-            for _, item in suggestions.iterrows():
+            for idx, item in suggestions.iterrows():
                 with st.expander(
                     f"{item['priority']} - {item['product_name']} "
                     f"({item['days_until_stockout']} days left)",
@@ -198,7 +198,7 @@ def render(db: KiranaDatabase):
                     
                     st.info(f"💡 **Recommendation:** {item['reasoning']}")
                     
-                    if st.button(f"Create Purchase Order", key=f"po_{item['product_name']}"):
+                    if st.button(f"Create Purchase Order", key=f"po_{idx}_{item['product_name']}"):
                         st.success(f"✅ Purchase order created for {item['suggested_order_qty']} units of {item['product_name']}")
         else:
             st.success("✅ All products have sufficient stock levels!")

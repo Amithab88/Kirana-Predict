@@ -9,7 +9,7 @@
 
 ```
 Kirana Store/
-├── app.py                      # 🚀 Main Streamlit entry point
+├── main.py                     # 🚀 Main Streamlit entry point
 ├── requirements.txt            # Python dependencies
 ├── .env                        # Local environment secrets (not committed)
 │
@@ -82,7 +82,7 @@ SENDGRID_API_KEY=your_sendgrid_key
 
 ### 3. Run the Streamlit App
 ```bash
-python -m streamlit run app.py
+python -m streamlit run main.py
 ```
 
 ### 4. Run the POS API Gateway (optional, separate terminal)
