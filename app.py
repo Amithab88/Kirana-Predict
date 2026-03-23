@@ -106,87 +106,97 @@ def require_admin():
 
 # ── Sidebar navigation ────────────────────────────────────────────────────
 role = st.session_state.user_role
+_nav = None          # will hold the page to navigate to, if any
+_logout = False      # set True if logout clicked
+
 with st.sidebar:
     st.markdown("## 📦 Kirana-Predict Pro")
     st.markdown(f"👤 **{st.session_state.user_email}**  \n🔖 Role: `{role}`")
     st.markdown("---")
 
     st.markdown("### 🏠 Navigation")
-
-    if st.sidebar.button("🏠 Home", use_container_width=True,
-                         type=("primary" if st.session_state.page == 'Home' else "secondary"),
-                         key="nav_home"):
-        ch_page('Home'); st.rerun()
+    if st.button("🏠 Home", use_container_width=True,
+                 type=("primary" if st.session_state.page == 'Home' else "secondary"),
+                 key="nav_home"):
+        _nav = 'Home'
 
     st.markdown("---")
     st.markdown("### 📊 Analytics")
 
     if role == 'Admin':
-        if st.sidebar.button("📊 Sales Analytics", use_container_width=True,
-                             type=("primary" if st.session_state.page == 'Sales Analysis' else "secondary"),
-                             key="nav_sales"):
-            ch_page('Sales Analysis'); st.rerun()
+        if st.button("📊 Sales Analytics", use_container_width=True,
+                     type=("primary" if st.session_state.page == 'Sales Analysis' else "secondary"),
+                     key="nav_sales"):
+            _nav = 'Sales Analysis'
 
-        if st.sidebar.button("📈 Advanced Analytics", use_container_width=True,
-                             type=("primary" if st.session_state.page == 'Advanced Analytics' else "secondary"),
-                             key="nav_analytics"):
-            ch_page('Advanced Analytics'); st.rerun()
+        if st.button("📈 Advanced Analytics", use_container_width=True,
+                     type=("primary" if st.session_state.page == 'Advanced Analytics' else "secondary"),
+                     key="nav_analytics"):
+            _nav = 'Advanced Analytics'
 
-        if st.sidebar.button("⚖️ Product Comparison", use_container_width=True,
-                             type=("primary" if st.session_state.page == 'Product Comparison' else "secondary"),
-                             key="nav_comparison"):
-            ch_page('Product Comparison'); st.rerun()
+        if st.button("⚖️ Product Comparison", use_container_width=True,
+                     type=("primary" if st.session_state.page == 'Product Comparison' else "secondary"),
+                     key="nav_comparison"):
+            _nav = 'Product Comparison'
 
-    if st.sidebar.button("🔮 AI Forecasting", use_container_width=True,
-                         type=("primary" if st.session_state.page == 'Inventory Forecast' else "secondary"),
-                         key="nav_forecast"):
-        ch_page('Inventory Forecast'); st.rerun()
+    if st.button("🔮 AI Forecasting", use_container_width=True,
+                 type=("primary" if st.session_state.page == 'Inventory Forecast' else "secondary"),
+                 key="nav_forecast"):
+        _nav = 'Inventory Forecast'
 
     st.markdown("---")
     st.markdown("### 📦 Inventory")
 
-    if st.sidebar.button("📦 Inventory Dashboard", use_container_width=True,
-                         type=("primary" if st.session_state.page == 'Inventory Dashboard' else "secondary"),
-                         key="nav_inventory"):
-        ch_page('Inventory Dashboard'); st.rerun()
+    if st.button("📦 Inventory Dashboard", use_container_width=True,
+                 type=("primary" if st.session_state.page == 'Inventory Dashboard' else "secondary"),
+                 key="nav_inventory"):
+        _nav = 'Inventory Dashboard'
 
-    if st.sidebar.button("📥 Stock Inward", use_container_width=True,
-                         type=("primary" if st.session_state.page == 'Stock Inward' else "secondary"),
-                         key="nav_stock"):
-        ch_page('Stock Inward'); st.rerun()
+    if st.button("📥 Stock Inward", use_container_width=True,
+                 type=("primary" if st.session_state.page == 'Stock Inward' else "secondary"),
+                 key="nav_stock"):
+        _nav = 'Stock Inward'
 
-    if st.sidebar.button("🔄 Store Transfer", use_container_width=True,
-                         type=("primary" if st.session_state.page == 'Store Transfer' else "secondary"),
-                         key="nav_transfer"):
-        ch_page('Store Transfer'); st.rerun()
+    if st.button("🔄 Store Transfer", use_container_width=True,
+                 type=("primary" if st.session_state.page == 'Store Transfer' else "secondary"),
+                 key="nav_transfer"):
+        _nav = 'Store Transfer'
 
     if role == 'Admin':
         st.markdown("---")
         st.markdown("### ⚙️ Settings")
 
-        if st.sidebar.button("📧 Alert Settings", use_container_width=True,
-                             type=("primary" if st.session_state.page == 'Alert Settings' else "secondary"),
-                             key="nav_alerts"):
-            ch_page('Alert Settings'); st.rerun()
+        if st.button("📧 Alert Settings", use_container_width=True,
+                     type=("primary" if st.session_state.page == 'Alert Settings' else "secondary"),
+                     key="nav_alerts"):
+            _nav = 'Alert Settings'
 
-        if st.sidebar.button("🏪 Store Management", use_container_width=True,
-                             type=("primary" if st.session_state.page == 'Store Management' else "secondary"),
-                             key="nav_stores"):
-            ch_page('Store Management'); st.rerun()
+        if st.button("🏪 Store Management", use_container_width=True,
+                     type=("primary" if st.session_state.page == 'Store Management' else "secondary"),
+                     key="nav_stores"):
+            _nav = 'Store Management'
 
     else:
         st.markdown("---")
-        if st.sidebar.button("➕ Add New Sale", use_container_width=True,
-                             type=("primary" if st.session_state.page == 'Add Sale' else "secondary"),
-                             key="nav_add_sale"):
-            ch_page('Add Sale'); st.rerun()
+        if st.button("➕ Add New Sale", use_container_width=True,
+                     type=("primary" if st.session_state.page == 'Add Sale' else "secondary"),
+                     key="nav_add_sale"):
+            _nav = 'Add Sale'
 
     st.markdown("---")
-    if st.sidebar.button("🚪 Logout", use_container_width=True, key="nav_logout"):
-        db.sign_out()
-        for k in ('authenticated', 'user_role', 'user_email'):
-            st.session_state[k] = None if k != 'authenticated' else False
-        st.rerun()
+    if st.button("🚪 Logout", use_container_width=True, key="nav_logout"):
+        _logout = True
+
+# ── Handle navigation & logout AFTER sidebar block closes ────────────────
+if _logout:
+    db.sign_out()
+    for k in ('authenticated', 'user_role', 'user_email'):
+        st.session_state[k] = None if k != 'authenticated' else False
+    st.rerun()
+
+if _nav is not None:
+    ch_page(_nav)
+    st.rerun()
 
 # ── Page router ───────────────────────────────────────────────────────────
 page = st.session_state.page
