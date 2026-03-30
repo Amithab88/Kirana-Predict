@@ -17,7 +17,8 @@ from app import (
     add_sale_page,
     inventory_dashboard,
     stock_inward_page,
-    store_transfer_page
+    store_transfer_page,
+    notifications_page,
 )
 
 # ── Config & shared DB instance ───────────────────────────────────────────
@@ -236,7 +237,8 @@ section[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label > div
 
 ADMIN_ONLY_PAGES = {
     'Sales Analysis', 'Advanced Analytics', 'Product Comparison',
-    'Alert Settings', 'Store Management', 'Store Details', 'Store Comparison'
+    'Alert Settings', 'Store Management', 'Store Details', 'Store Comparison',
+    'Notifications',
 }
 
 # ── Session state defaults ────────────────────────────────────────────────
@@ -341,6 +343,10 @@ NAV_OPTIONS["🔄  Store Transfer"]         = "Store Transfer"
 if role == 'Admin':
     NAV_OPTIONS["📧  Alert Settings"]     = "Alert Settings"
     NAV_OPTIONS["🏪  Store Management"]   = "Store Management"
+    # Notification badge with unread count
+    _unread = db.get_unread_count()
+    _notif_label = f"🔔  Notifications ({_unread})" if _unread > 0 else "🔔  Notifications"
+    NAV_OPTIONS[_notif_label]              = "Notifications"
 else:
     NAV_OPTIONS["➕  Add New Sale"]        = "Add Sale"
 
@@ -448,3 +454,7 @@ elif page == 'Store Details':
 
 elif page == 'Add Sale':
     add_sale_page.render(df, db)
+
+elif page == 'Notifications':
+    require_admin()
+    notifications_page.render(db)

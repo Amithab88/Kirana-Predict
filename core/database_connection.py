@@ -90,7 +90,7 @@ class SupabaseConnection:
                 return False
                 
         except Exception as e:
-            print(f"\n❌ CONNECTION ERROR: {error}\n")
+            print(f"\n❌ CONNECTION ERROR: {e}\n")
             return False
     
     def get_client(self) -> Client:
